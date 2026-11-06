@@ -3,6 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import productRoutes from "./routes/product.routes.js";
 import cartRoutes from "./routes/cart.routes.js";
+import categoryRoutes from "./routes/category.routes.js";
 
 dotenv.config();
 
@@ -27,3 +28,6 @@ app.listen(PORT, () => {
 // Rutas de productos
 app.use("/api/products", productRoutes);
 app.use("/api/cart", cartRoutes);
+
+// Rutas de categorías
+app.use("/api/categories", categoryRoutes);
