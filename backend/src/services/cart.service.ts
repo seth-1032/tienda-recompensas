@@ -77,16 +77,20 @@ export const addToCart = async ({
             },
         });
 
-        const updatedUser = await tx.user.update({
-            where: { id: DEMO_USER_ID },
-            data: {
-                points: {
-                    increment: POINTS_PER_ACTION,
-                },
-            },
-        });
+        const pointsEarned = existingItem ? 0 : POINTS_PER_ACTION;
 
-        return { pointsBalance: updatedUser.points, pointsEarned: POINTS_PER_ACTION };
+        const updatedUser = pointsEarned > 0
+            ? await tx.user.update({
+                where: { id: DEMO_USER_ID },
+                data: {
+                    points: {
+                        increment: pointsEarned,
+                    },
+                },
+            })
+            : user;
+
+        return { pointsBalance: updatedUser.points, pointsEarned, };
     });
 };
 
@@ -199,6 +203,7 @@ export const updateCartItem = async ({
     };
 };
 
+
 export const deleteCartItem = async ({
     productId,
 }: DeleteCartItemParams) => {
@@ -206,33 +211,57 @@ export const deleteCartItem = async ({
     if (!Number.isInteger(productId) || productId < 1)
         throw new Error("INVALID_INPUT");
 
-    const cart = await prisma.cart.findUnique({ where: { userId: DEMO_USER_ID }, });
+    return prisma.$transaction(async (tx) => {
 
-    if (!cart)
-        throw new Error("CART_NOT_FOUND");
+        const cart = await tx.cart.findUnique({
+            where: { userId: DEMO_USER_ID },
+        });
 
-    const item = await prisma.cartItem.findUnique({
-        where: {
-            cartId_productId: {
-                cartId: cart.id,
-                productId,
+        if (!cart)
+            throw new Error("CART_NOT_FOUND");
+
+        const item = await tx.cartItem.findUnique({
+            where: {
+                cartId_productId: {
+                    cartId: cart.id,
+                    productId,
+                },
             },
-        },
+        });
+
+        if (!item)
+            throw new Error("CART_ITEM_NOT_FOUND");
+
+        const user = await tx.user.findUnique({
+            where: { id: DEMO_USER_ID },
+        });
+
+        if (!user)
+            throw new Error("USER_NOT_FOUND");
+
+        // Evitar que el saldo de puntos sea negativo.
+        const pointsDeducted = Math.min(user.points, POINTS_PER_ACTION);
+
+        const updatedUser = pointsDeducted > 0
+            ? await tx.user.update({
+                where: { id: DEMO_USER_ID },
+                data: {
+                    points: {
+                        decrement: pointsDeducted,
+                    },
+                },
+            })
+            : user;
+
+        await tx.cartItem.delete({ where: { id: item.id } });
+
+        return {
+            productId,
+            pointsBalance: updatedUser.points,
+            pointsDeducted,
+            message: "Producto eliminado del carrito correctamente.",
+        };
     });
-
-    if (!item)
-        throw new Error("CART_ITEM_NOT_FOUND");
-
-    await prisma.cartItem.delete({
-        where: {
-            id: item.id,
-        },
-    });
-
-    return {
-        productId,
-        message: "Producto eliminado del carrito correctamente.",
-    };
 };
 
 
